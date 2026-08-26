@@ -9,7 +9,7 @@ import qs.Ui
 // is the shape contract the shell expects and should not need edits.
 BarWidget {
   id: root
-  moduleName: "io.github.YOURNAME.widget-name"
+  moduleName: "io.github.jeremylongshore.workspace-storyboard"
 
   function injectPanel() {
     var target = panelLoader.item

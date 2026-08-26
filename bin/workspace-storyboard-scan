@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Emit bounded, local Hyprland workspace state and a compact re-entry trail.
+set -euo pipefail
+
+state_root="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-workspace-storyboard"
+history_file="$state_root/history.jsonl"
+mkdir -p "$state_root"
+
+if ! command -v hyprctl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
+  jq -cn '{activeId:null,workspaces:[],history:[]}'
+  exit 0
+fi
+
+workspaces="$(hyprctl -j workspaces 2>/dev/null || printf '[]')"
+active="$(hyprctl -j activeworkspace 2>/dev/null || printf '{}')"
+window="$(hyprctl -j activewindow 2>/dev/null || printf '{}')"
+if ! jq -e 'type == "array"' >/dev/null 2>&1 <<< "$workspaces"; then workspaces='[]'; fi
+
+id="$(jq -r '.id // empty' <<< "$active" 2>/dev/null)"
+if [[ "$id" =~ ^[1-9][0-9]{0,2}$ ]]; then
+  now="$(date +%s)"
+  title="$(jq -r '.title // ""' <<< "$window" 2>/dev/null)"
+  app="$(jq -r '.class // ""' <<< "$window" 2>/dev/null)"
+  jq -cn --argjson id "$id" --arg title "$title" --arg app "$app" --argjson at "$now" '{id:$id,title:$title,app:$app,at:$at}' >> "$history_file"
+fi
+
+# Tail retains a bounded on-disk trail even on a panel that is opened all day.
+if [[ -f "$history_file" ]]; then
+  trimmed="$(mktemp -t workspace-storyboard-XXXXXX)"
+  tail -n 40 "$history_file" > "$trimmed"
+  mv "$trimmed" "$history_file"
+fi
+
+history='[]'
+if [[ -s "$history_file" ]]; then history="$(jq -s . "$history_file" 2>/dev/null || printf '[]')"; fi
+jq -cn --argjson workspaces "$workspaces" --argjson active "$active" --argjson history "$history" \
+  '{activeId:($active.id // null),workspaces:[$workspaces[] | {id:(.id // 0),windows:(.windows // 0),title:(.lastwindowtitle // ""),app:""}],history:$history}'

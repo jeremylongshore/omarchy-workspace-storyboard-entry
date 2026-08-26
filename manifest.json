@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "id": "io.github.YOURNAME.widget-name",
-  "name": "Widget Name",
+  "id": "io.github.jeremylongshore.workspace-storyboard",
+  "name": "Workspace Storyboard",
   "version": "0.1.0",
-  "author": "Your Name",
+  "author": "Jeremy Longshore",
   "license": "MIT",
-  "description": "One-sentence description of what the widget shows in the Omarchy bar.",
+  "description": "Local workspace re-entry memory for the Omarchy bar.",
   "kinds": [
     "bar-widget"
   ],
@@ -13,11 +13,12 @@
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
-    "displayName": "Widget Name",
-    "description": "Longer description: what the pill shows, what the panel carries, where the data comes from.",
+    "displayName": "Workspace Storyboard",
+    "description": "Shows local Hyprland workspaces and a bounded recent workspace trail.",
     "category": "Info",
     "aliases": [
-      "widget-name"
+      "workspace-storyboard",
+      "spaces"
     ],
     "allowMultiple": false
   }
