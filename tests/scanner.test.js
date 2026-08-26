@@ -1,0 +1,18 @@
+const test = require("node:test")
+const assert = require("node:assert/strict")
+const fs = require("node:fs")
+const os = require("node:os")
+const path = require("node:path")
+const { spawnSync } = require("node:child_process")
+const scanner = path.join(__dirname, "..", "bin", "workspace-storyboard-scan")
+
+test("scanner returns a valid empty envelope when hyprctl exists but has no session", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "storyboard-scanner-")); const bin = path.join(root, "bin"); fs.mkdirSync(bin)
+  const fake = path.join(bin, "hyprctl")
+  fs.writeFileSync(fake, '#!/usr/bin/env bash\nprintf "HYPRLAND_INSTANCE_SIGNATURE not set\\n"\nexit 1\n')
+  fs.chmodSync(fake, 0o755)
+  const result = spawnSync(scanner, [], { encoding: "utf8", env: { ...process.env, HOME: root, XDG_STATE_HOME: path.join(root, "state"), PATH: bin + ":" + process.env.PATH } })
+  assert.equal(result.status, 0, result.stderr)
+  assert.deepEqual(JSON.parse(result.stdout), { activeId: null, workspaces: [], history: [] })
+  fs.rmSync(root, { recursive: true, force: true })
+})

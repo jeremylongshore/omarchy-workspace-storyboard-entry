@@ -15,6 +15,8 @@ workspaces="$(hyprctl -j workspaces 2>/dev/null || printf '[]')"
 active="$(hyprctl -j activeworkspace 2>/dev/null || printf '{}')"
 window="$(hyprctl -j activewindow 2>/dev/null || printf '{}')"
 if ! jq -e 'type == "array"' >/dev/null 2>&1 <<< "$workspaces"; then workspaces='[]'; fi
+if ! jq -e 'type == "object"' >/dev/null 2>&1 <<< "$active"; then active='{}'; fi
+if ! jq -e 'type == "object"' >/dev/null 2>&1 <<< "$window"; then window='{}'; fi
 
 id="$(jq -r '.id // empty' <<< "$active" 2>/dev/null)"
 if [[ "$id" =~ ^[1-9][0-9]{0,2}$ ]]; then
