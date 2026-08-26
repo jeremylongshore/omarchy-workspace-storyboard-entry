@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" role="img" aria-labelledby="title desc">
+ <title id="title">Workspace Storyboard</title><desc id="desc">Local workspace re-entry memory for Omarchy</desc><rect width="1280" height="360" fill="#12111c"/><path d="M72 86h184v150H72zM94 108h58v52H94zm82 0h58v52h-58zM94 180h140v34H94z" fill="none" stroke="#b997ff" stroke-width="9"/><path d="M76 278h170" stroke="#b997ff" stroke-width="9"/><circle cx="232" cy="278" r="10" fill="#b997ff"/>
+ <text x="306" y="154" fill="#f6f2ff" font-family="monospace" font-size="55" font-weight="700" letter-spacing="3">WORKSPACE STORYBOARD</text><text x="310" y="211" fill="#bbb1d3" font-family="monospace" font-size="24" letter-spacing="3">A SMALL MEMORY OF WHERE YOUR WORK WAS GOING</text><text x="310" y="287" fill="#b997ff" font-family="monospace" font-size="18">HYPRLAND STATE · BOUNDED HISTORY · LOCAL ONLY</text>
+</svg>
