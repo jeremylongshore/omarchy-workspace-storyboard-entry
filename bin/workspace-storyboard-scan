@@ -2,6 +2,9 @@
 # Emit bounded, local Hyprland workspace state and a compact re-entry trail.
 set -euo pipefail
 
+# Private state: umask before creation, so the state directory is born 0700 and
+# the history file 0600 with no permissive window. (Marketplace review, #2901.)
+umask 077
 state_root="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-workspace-storyboard"
 history_file="$state_root/history.jsonl"
 mkdir -p "$state_root"
@@ -11,29 +14,55 @@ if ! command -v hyprctl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-workspaces="$(hyprctl -j workspaces 2>/dev/null || printf '[]')"
-active="$(hyprctl -j activeworkspace 2>/dev/null || printf '{}')"
-window="$(hyprctl -j activewindow 2>/dev/null || printf '{}')"
+# Every hyprctl response is bounded in TIME and BYTES before it reaches a shell
+# variable. Window titles and classes are client-influenced text, so a broken
+# or malicious client could otherwise feed an unbounded or stalled stream into
+# this recurring scan. Truncation at the byte ceiling can only yield invalid
+# JSON, which the type checks below reject into the same safe defaults as a
+# failed call — truncated data is never half-used.
+hypr_max_bytes=262144
+capture() { timeout 2 hyprctl -j "$1" 2>/dev/null | head -c "$hypr_max_bytes" || true; }
+
+workspaces="$(capture workspaces)"; [[ -n "$workspaces" ]] || workspaces='[]'
+active="$(capture activeworkspace)"; [[ -n "$active" ]] || active='{}'
+window="$(capture activewindow)"; [[ -n "$window" ]] || window='{}'
 if ! jq -e 'type == "array"' >/dev/null 2>&1 <<< "$workspaces"; then workspaces='[]'; fi
 if ! jq -e 'type == "object"' >/dev/null 2>&1 <<< "$active"; then active='{}'; fi
 if ! jq -e 'type == "object"' >/dev/null 2>&1 <<< "$window"; then window='{}'; fi
 
+# The history file is user-writable mutable state: reads accept only a REGULAR
+# file (a symlink could point anywhere; a FIFO would stall the scan) under a
+# byte ceiling. Violations read as an empty trail.
+history_max_bytes=65536
+history_readable() {
+  [[ -f "$history_file" && ! -L "$history_file" ]] || return 1
+  local size; size="$(stat -c %s "$history_file" 2>/dev/null || printf 0)"
+  [[ "$size" =~ ^[0-9]+$ ]] && (( size > 0 && size <= history_max_bytes ))
+}
+
 id="$(jq -r '.id // empty' <<< "$active" 2>/dev/null)"
+
+# One atomic rewrite covers trim and append together: previous tail plus the
+# optional new record flow into a mktemp created INSIDE the private directory,
+# then rename into place. The old code appended with `>>` (follows a planted
+# symlink to an unintended user file) and trimmed through a /tmp mktemp; both
+# holes close here. Client-influenced title/class strings are length-capped
+# before they are stored.
+trimmed="$(mktemp "$state_root/.history.XXXXXX")"
+if history_readable; then timeout 2 tail -n 39 "$history_file" > "$trimmed" 2>/dev/null || : > "$trimmed"; fi
 if [[ "$id" =~ ^[1-9][0-9]{0,2}$ ]]; then
   now="$(date +%s)"
-  title="$(jq -r '.title // ""' <<< "$window" 2>/dev/null)"
-  app="$(jq -r '.class // ""' <<< "$window" 2>/dev/null)"
-  jq -cn --argjson id "$id" --arg title "$title" --arg app "$app" --argjson at "$now" '{id:$id,title:$title,app:$app,at:$at}' >> "$history_file"
+  title="$(jq -r '(.title // "") | .[0:256]' <<< "$window" 2>/dev/null || printf '')"
+  app="$(jq -r '(.class // "") | .[0:128]' <<< "$window" 2>/dev/null || printf '')"
+  jq -cn --argjson id "$id" --arg title "$title" --arg app "$app" --argjson at "$now" '{id:$id,title:$title,app:$app,at:$at}' >> "$trimmed"
 fi
-
-# Tail retains a bounded on-disk trail even on a panel that is opened all day.
-if [[ -f "$history_file" ]]; then
-  trimmed="$(mktemp -t workspace-storyboard-XXXXXX)"
-  tail -n 40 "$history_file" > "$trimmed"
-  mv "$trimmed" "$history_file"
-fi
+mv -f "$trimmed" "$history_file"
 
 history='[]'
-if [[ -s "$history_file" ]]; then history="$(jq -s . "$history_file" 2>/dev/null || printf '[]')"; fi
-jq -cn --argjson workspaces "$workspaces" --argjson active "$active" --argjson history "$history" \
-  '{activeId:($active.id // null),workspaces:[$workspaces[] | {id:(.id // 0),windows:(.windows // 0),title:(.lastwindowtitle // ""),app:""}],history:$history}'
+if history_readable; then history="$(timeout 2 jq -s . "$history_file" 2>/dev/null || printf '[]')"; fi
+
+# Final stdout is capped as defense in depth so the QML StdioCollector can
+# never buffer unbounded output even if a bound above regresses.
+out="$(jq -cn --argjson workspaces "$workspaces" --argjson active "$active" --argjson history "$history" \
+  '{activeId:($active.id // null),workspaces:[$workspaces[] | {id:(.id // 0),windows:(.windows // 0),title:((.lastwindowtitle // "") | .[0:256]),app:""}],history:$history}')"
+printf '%s' "${out:0:1048576}"
