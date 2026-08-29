@@ -4,7 +4,7 @@
   "private": true,
   "description": "Local Hyprland workspace storyboard test harness",
   "scripts": {
-    "test": "c8 --all --include=Model.js --check-coverage --lines 95 --functions 95 --branches 90 node --test tests/*.test.js"
+    "test": "perl -c bin/workspace-storyboard-history && c8 --all --include=Model.js --check-coverage --lines 95 --functions 95 --branches 90 node --test tests/*.test.js"
   },
   "devDependencies": {
     "c8": "^10.1.3"

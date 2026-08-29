@@ -81,6 +81,34 @@ rm -rf /root/.config/omarchy/plugins/\$NAME
 mkdir -p /root/.config/omarchy/plugins/\$NAME
 tar xzf /tmp/rigrender.tgz -C /root/.config/omarchy/plugins/\$NAME
 
+# Give this plugin a curated, local Hyprland story inside the disposable rig.
+# The real scanner and history helper still run; only hyprctl's fixture replies
+# are substituted so the screenshot proves the populated panel rather than an
+# empty state under the headless sway compositor.
+FIXTURE_BIN=/tmp/workspace-storyboard-bin
+mkdir -p "\$FIXTURE_BIN"
+cat > "\$FIXTURE_BIN/hyprctl" <<'HYPR_FIXTURE'
+#!/bin/sh
+if [ "\$1" = "-j" ]; then
+  case "\$2" in
+    workspaces) printf '%s' '[{"id":1,"windows":3,"lastwindowtitle":"API test run"},{"id":3,"windows":5,"lastwindowtitle":"Workspace Storyboard hardening"},{"id":7,"windows":2,"lastwindowtitle":"Release notes"}]' ;;
+    activeworkspace) printf '%s' '{"id":3}' ;;
+    activewindow) printf '%s' '{"title":"Workspace Storyboard hardening","class":"code"}' ;;
+  esac
+fi
+exit 0
+HYPR_FIXTURE
+chmod 755 "\$FIXTURE_BIN/hyprctl"
+export PATH="\$FIXTURE_BIN:\$PATH"
+
+export XDG_STATE_HOME=/tmp/workspace-storyboard-state
+if [ -d "\$XDG_STATE_HOME" ]; then find "\$XDG_STATE_HOME" -depth -delete; fi
+NOW=\$(date +%s)
+printf '{"id":1,"title":"API test run","app":"terminal","at":%s}' "\$((NOW - 2700))" \
+  | /root/.config/omarchy/plugins/\$NAME/bin/workspace-storyboard-history >/dev/null
+printf '{"id":7,"title":"Release notes","app":"browser","at":%s}' "\$((NOW - 900))" \
+  | /root/.config/omarchy/plugins/\$NAME/bin/workspace-storyboard-history >/dev/null
+
 mkdir -p /root/.config/omarchy
 cat > /root/.config/omarchy/shell.json <<JSON
 {"version":1,"bar":{"position":"top","transparent":false,"centerAnchor":"omarchy.clock",

@@ -1,0 +1,179 @@
+#!/usr/bin/perl
+# Descriptor-bound Workspace Storyboard history lifecycle.
+use strict;
+use warnings;
+
+use Fcntl qw(:DEFAULT :mode);
+use File::Spec;
+use IO::Handle;
+use JSON::PP qw(decode_json encode_json);
+
+umask 0077;
+my $MAX_BYTES  = 64 * 1024;
+my $MAX_EVENTS = 40;
+my $MAX_INPUT  = 2048;
+my $FINAL      = 'history.jsonl';
+
+sub open_state_chain {
+    my $home = $ENV{HOME} // '';
+    my $base = length($ENV{XDG_STATE_HOME} // '')
+        ? $ENV{XDG_STATE_HOME}
+        : File::Spec->catdir($home, '.local', 'state');
+    die "state root must be absolute\n" unless File::Spec->file_name_is_absolute($base);
+
+    my $full = File::Spec->catdir($base, 'omarchy-workspace-storyboard');
+    my @parts = grep { length($_) } File::Spec->splitdir($full);
+    die "unsafe state path\n" if grep { $_ eq '.' || $_ eq '..' } @parts;
+
+    my $current;
+    sysopen($current, '/', O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+        or die "cannot pin filesystem root\n";
+    my @chain = ($current);
+    for my $part (@parts) {
+        chdir($current) or die "cannot traverse state path\n";
+        my $next;
+        unless (sysopen($next, $part, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)) {
+            mkdir($part, 0700);
+            sysopen($next, $part, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+                or die "unsafe state path component\n";
+        }
+        my @st = stat($next);
+        die "unsafe state path component\n" unless @st && S_ISDIR($st[2]);
+        push @chain, $next;
+        $current = $next;
+    }
+
+    my @root_stat = stat($current);
+    die "unsafe state directory owner\n"
+        unless @root_stat && S_ISDIR($root_stat[2]) && $root_stat[4] == $<;
+    chmod(0700, $current) or die "cannot privatize state directory\n";
+    chdir($current) or die "cannot retain state directory\n";
+    return (\@chain, $current);
+}
+
+sub valid_event {
+    my ($row) = @_;
+    return unless ref($row) eq 'HASH';
+    return unless ($row->{id} // '') =~ /\A[1-9][0-9]{0,2}\z/;
+    return unless ($row->{at} // '') =~ /\A[1-9][0-9]*\z/;
+    return unless !ref($row->{title}) && !ref($row->{app});
+    return {
+        id    => 0 + $row->{id},
+        title => substr($row->{title} // '', 0, 256),
+        app   => substr($row->{app} // '', 0, 128),
+        at    => 0 + $row->{at},
+    };
+}
+
+sub read_input_event {
+    my $raw = '';
+    my $read = sysread(STDIN, $raw, $MAX_INPUT + 1);
+    return unless defined($read) && $read > 0 && $read <= $MAX_INPUT;
+    my $row = eval { decode_json($raw) };
+    return valid_event($row);
+}
+
+sub read_events {
+    my $fh;
+    return ([], 0) unless sysopen($fh, $FINAL, O_RDONLY | O_NONBLOCK | O_NOFOLLOW);
+    my @st = stat($fh);
+    return ([], 0) unless @st
+        && S_ISREG($st[2])
+        && $st[4] == $<
+        && $st[7] <= $MAX_BYTES;
+
+    my $raw = '';
+    while (length($raw) <= $MAX_BYTES) {
+        my $read = sysread($fh, my $chunk, 4096);
+        last unless defined($read) && $read > 0;
+        $raw .= $chunk;
+    }
+    return ([], 0) if length($raw) > $MAX_BYTES;
+
+    my @events;
+    for my $line (split /\n/, $raw) {
+        next unless length($line);
+        my $row = eval { decode_json($line) };
+        my $event = valid_event($row);
+        push @events, $event if $event;
+    }
+    splice(@events, 0, @events - $MAX_EVENTS) if @events > $MAX_EVENTS;
+    return (\@events, 1);
+}
+
+sub open_temp {
+    for (1 .. 64) {
+        my $name = sprintf('.history.%d.%08x%08x', $$,
+            int(rand(0xffffffff)), int(rand(0xffffffff)));
+        my $fh;
+        if (sysopen($fh, $name,
+            O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600)) {
+            chmod(0600, $fh) or die "cannot privatize history temp\n";
+            return ($name, $fh);
+        }
+    }
+    die "cannot create history temp\n";
+}
+
+sub same_object {
+    my ($left, $right) = @_;
+    return @$left && @$right
+        && $left->[0] == $right->[0]
+        && $left->[1] == $right->[1]
+        && S_ISREG($left->[2]) && S_ISREG($right->[2]);
+}
+
+sub publish_events {
+    my ($events, $dir_fh) = @_;
+    my ($temp, $fh) = open_temp();
+    my @opened = stat($fh);
+    my $payload = join('', map { encode_json($_) . "\n" } @$events);
+    die "history payload exceeded bound\n" if length($payload) > $MAX_BYTES;
+
+    my $offset = 0;
+    while ($offset < length($payload)) {
+        my $written = syswrite($fh, substr($payload, $offset));
+        die "history write failed\n" unless defined($written) && $written > 0;
+        $offset += $written;
+    }
+    $fh->sync or die "history fsync failed\n";
+
+    # Keep the exclusive descriptor open through descriptor-relative rename.
+    # If a same-UID process replaced the name, object identity differs and no
+    # attacker-controlled entry is published as though it were our tempfile.
+    my @named = lstat($temp);
+    unless (same_object(\@opened, \@named)) {
+        close($fh);
+        unlink($temp);
+        die "history temp identity changed\n";
+    }
+    rename($temp, $FINAL) or die "history replace failed\n";
+    my @published = lstat($FINAL);
+    die "history publication identity changed\n"
+        unless same_object(\@opened, \@published);
+    $dir_fh->sync or die "history directory fsync failed\n";
+    close($fh) or die "history close failed\n";
+}
+
+my ($chain, $dir_fh) = open_state_chain();
+my $incoming = read_input_event();
+my ($events, $source_safe) = read_events();
+my $changed = 0;
+
+if ($incoming) {
+    my $last = @$events ? $events->[-1] : undef;
+    my $duplicate = $last
+        && $last->{id} == $incoming->{id}
+        && $last->{title} eq $incoming->{title}
+        && $last->{app} eq $incoming->{app};
+    unless ($duplicate) {
+        push @$events, $incoming;
+        $changed = 1;
+    }
+}
+splice(@$events, 0, @$events - $MAX_EVENTS) if @$events > $MAX_EVENTS;
+publish_events($events, $dir_fh) if $changed || !$source_safe;
+
+# The file stays chronological for efficient append/trim semantics; the panel
+# receives newest-first history so "RECENT RE-ENTRY" is truthful.
+print encode_json([reverse @$events]), "\n";

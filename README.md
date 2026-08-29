@@ -8,9 +8,11 @@ Workspace Storyboard is a local, bounded re-entry memory for Hyprland
 workspaces. It shows active workspaces, their current window count, and a compact
 trail of recently active windows so returning to a project has a little context.
 
-It reads local Hyprland JSON only. Titles are sanitized before display, history
-is capped at 40 records, and every workspace action revalidates a numeric ID.
-When no Hyprland session is available it returns a valid empty state.
+It reads local Hyprland JSON only. Every Hyprland response and final payload is
+time and byte bounded. History is capped at 40 real transitions, suppresses
+unchanged polling duplicates, and is read and published beneath retained state
+directory descriptors. Every workspace action revalidates a numeric ID. When
+no Hyprland session is available it returns a valid empty state.
 
 ## Install
 
