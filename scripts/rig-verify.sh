@@ -38,7 +38,7 @@ fingerprint() {
 FP="$(fingerprint)"
 SOURCE_COMMIT="$(git -C "$TARGET" rev-parse HEAD 2>/dev/null || printf unknown)"
 SOURCE_DIRTY=false
-git -C "$TARGET" diff --quiet --ignore-submodules HEAD -- 2>/dev/null || SOURCE_DIRTY=true
+git -C "$TARGET" diff --quiet --ignore-submodules HEAD -- '*.qml' '*.js' manifest.json bin/ 2>/dev/null || SOURCE_DIRTY=true
 
 TGZ="$(mktemp -t rigcheck-XXXXXX.tgz)"
 trap 'rm -f "$TGZ"' EXIT
