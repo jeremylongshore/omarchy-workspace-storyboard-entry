@@ -1,0 +1,11 @@
+{
+  "fingerprint": "65e5e874064c8c4f187346d12820aa022ce08f218416a833e4c253c20594ae07",
+  "sourceCommit": "46fc2c22d8e9dd565288180c3fa31a3adecd995d",
+  "sourceDirty": false,
+  "rig": "intent-ops-buzz/omarchy-rig",
+  "evidenceBoundary": "real Omarchy shell and QML; deterministic local Hyprland fixture data",
+  "previewSha256": "259f4b3d782bd0a8a915c0080d68f7d779fea15e77599233e46967b00e23c38d",
+  "dimensions": "960 x 600",
+  "ipcDispatch": "dispatch workspace 7",
+  "capturedAt": "2026-08-29T18:56:40Z"
+}
