@@ -29,6 +29,7 @@ OUT="${2:-$TARGET/render.png}"
 HOST="${OMARCHY_RIG_HOST:-intent-ops-buzz}"
 CONTAINER="${OMARCHY_RIG_CONTAINER:-omarchy-rig}"
 RES="${OMARCHY_RIG_RESOLUTION:-1280x900}"
+SHOT_GEOMETRY="${OMARCHY_RIG_SHOT_GEOMETRY:-160,0 960x600}"
 
 command -v jq >/dev/null 2>&1 || { echo "rig-render: jq is required" >&2; exit 2; }
 [[ -f "$TARGET/manifest.json" ]] || { echo "rig-render: no manifest.json in $TARGET" >&2; exit 2; }
@@ -67,7 +68,7 @@ trap 'rm -f "$TGZ" "$REMOTE"' EXIT
 cat > "$REMOTE" <<REMOTE_EOF
 #!/bin/sh
 set -eu
-MOD="$MOD"; NAME="$NAME"; RES="$RES"
+MOD="$MOD"; NAME="$NAME"; RES="$RES"; SHOT_GEOMETRY="$SHOT_GEOMETRY"
 export XDG_RUNTIME_DIR=/tmp/xdgrt
 export OMARCHY_PATH=/root/omarchy
 export PATH=/root/omarchy/bin:\$PATH
@@ -152,7 +153,7 @@ qs -p /root/omarchy/shell ipc call "\$MOD" jump 7 2>/dev/null
 sleep 2
 grep -Fx 'dispatch workspace 7' /tmp/workspace-storyboard-hyprctl.log >/dev/null
 echo "===DISPATCH=== dispatch workspace 7"
-grim /tmp/rigrender.png 2>/dev/null
+grim -g "\$SHOT_GEOMETRY" /tmp/rigrender.png 2>/dev/null
 echo "===SHOT=== \$(ls -l /tmp/rigrender.png 2>/dev/null | awk '{print \$5}') bytes"
 REMOTE_EOF
 
