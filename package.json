@@ -1,12 +1,22 @@
 {
   "name": "omarchy-workspace-storyboard-entry",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Local Hyprland workspace storyboard test harness",
   "scripts": {
-    "test": "perl -c bin/workspace-storyboard-history && c8 --all --include=Model.js --check-coverage --lines 95 --functions 95 --branches 90 node --test tests/*.test.js"
+    "test": "perl -c bin/workspace-storyboard-history && c8 --all --include=Model.js --check-coverage --lines 95 --functions 95 --branches 90 node --test tests/*.test.js",
+    "test:smoke": "node --test tests/smoke.test.js",
+    "test:race": "for run in 1 2 3; do node --test tests/scanner.test.js || exit; done",
+    "test:e2e": "bash e2e/buzz.sh",
+    "test:mutation": "stryker run",
+    "audit": "audit-harness verify && audit-harness audit . --deep && audit-harness scan ."
   },
   "devDependencies": {
-    "c8": "^10.1.3"
+    "@intentsolutions/audit-harness": "^1.3.1",
+    "@stryker-mutator/core": "^10.0.0",
+    "c8": "^12.0.0"
+  },
+  "overrides": {
+    "qs": "6.15.3"
   }
 }

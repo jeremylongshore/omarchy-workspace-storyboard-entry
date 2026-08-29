@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-use Fcntl qw(:DEFAULT :mode);
+use Fcntl qw(:DEFAULT :flock :mode);
 use File::Spec;
 use IO::Handle;
 use JSON::PP qw(decode_json encode_json);
@@ -13,6 +13,11 @@ my $MAX_BYTES  = 64 * 1024;
 my $MAX_EVENTS = 40;
 my $MAX_INPUT  = 2048;
 my $FINAL      = 'history.jsonl';
+my $LOCK       = '.history.lock';
+
+my $clear = @ARGV == 1 && $ARGV[0] eq '--clear';
+die "usage: workspace-storyboard-history [--clear]\n"
+    if @ARGV && !$clear;
 
 sub open_state_chain {
     my $home = $ENV{HOME} // '';
@@ -101,6 +106,18 @@ sub read_events {
     return (\@events, 1);
 }
 
+sub lock_history {
+    my $fh;
+    sysopen($fh, $LOCK, O_RDWR | O_CREAT | O_NOFOLLOW, 0600)
+        or die "cannot open history lock\n";
+    my @st = stat($fh);
+    die "unsafe history lock\n"
+        unless @st && S_ISREG($st[2]) && $st[4] == $<;
+    chmod(0600, $fh) or die "cannot privatize history lock\n";
+    flock($fh, LOCK_EX) or die "cannot lock history\n";
+    return $fh;
+}
+
 sub open_temp {
     for (1 .. 64) {
         my $name = sprintf('.history.%d.%08x%08x', $$,
@@ -125,42 +142,53 @@ sub same_object {
 
 sub publish_events {
     my ($events, $dir_fh) = @_;
-    my ($temp, $fh) = open_temp();
-    my @opened = stat($fh);
-    my $payload = join('', map { encode_json($_) . "\n" } @$events);
-    die "history payload exceeded bound\n" if length($payload) > $MAX_BYTES;
+    my ($temp, $fh);
+    my $ok = eval {
+        ($temp, $fh) = open_temp();
+        my @opened = stat($fh);
+        my $payload = join('', map { encode_json($_) . "\n" } @$events);
+        die "history payload exceeded bound\n" if length($payload) > $MAX_BYTES;
 
-    my $offset = 0;
-    while ($offset < length($payload)) {
-        my $written = syswrite($fh, substr($payload, $offset));
-        die "history write failed\n" unless defined($written) && $written > 0;
-        $offset += $written;
-    }
-    $fh->sync or die "history fsync failed\n";
+        my $offset = 0;
+        while ($offset < length($payload)) {
+            my $written = syswrite($fh, substr($payload, $offset));
+            die "history write failed\n" unless defined($written) && $written > 0;
+            $offset += $written;
+        }
+        $fh->sync or die "history fsync failed\n";
 
-    # Keep the exclusive descriptor open through descriptor-relative rename.
-    # If a same-UID process replaced the name, object identity differs and no
-    # attacker-controlled entry is published as though it were our tempfile.
-    my @named = lstat($temp);
-    unless (same_object(\@opened, \@named)) {
-        close($fh);
-        unlink($temp);
-        die "history temp identity changed\n";
-    }
-    rename($temp, $FINAL) or die "history replace failed\n";
-    my @published = lstat($FINAL);
-    die "history publication identity changed\n"
-        unless same_object(\@opened, \@published);
-    $dir_fh->sync or die "history directory fsync failed\n";
-    close($fh) or die "history close failed\n";
+        # Keep the exclusive descriptor open through descriptor-relative rename.
+        # If a same-UID process replaced the name, object identity differs and no
+        # attacker-controlled entry is published as though it were our tempfile.
+        my @named = lstat($temp);
+        die "history temp identity changed\n"
+            unless same_object(\@opened, \@named);
+        rename($temp, $FINAL) or die "history replace failed\n";
+        my @published = lstat($FINAL);
+        die "history publication identity changed\n"
+            unless same_object(\@opened, \@published);
+        $dir_fh->sync or die "history directory fsync failed\n";
+        close($fh) or die "history close failed\n";
+        $fh = undef;
+        1;
+    };
+    return if $ok;
+    my $error = $@ || "history publication failed\n";
+    close($fh) if $fh;
+    unlink($temp) if defined($temp) && length($temp);
+    die $error;
 }
 
 my ($chain, $dir_fh) = open_state_chain();
-my $incoming = read_input_event();
+my $incoming = $clear ? undef : read_input_event();
+my $lock_fh = lock_history();
 my ($events, $source_safe) = read_events();
 my $changed = 0;
 
-if ($incoming) {
+if ($clear) {
+    $events = [];
+    $changed = 1;
+} elsif ($incoming) {
     my $last = @$events ? $events->[-1] : undef;
     my $duplicate = $last
         && $last->{id} == $incoming->{id}

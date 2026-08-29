@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "io.github.jeremylongshore.workspace-storyboard",
   "name": "Workspace Storyboard",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "Jeremy Longshore",
   "license": "MIT",
-  "description": "Local workspace re-entry memory for the Omarchy bar.",
+  "description": "Private workspace re-entry memory with keyboard navigation and one-click clearing.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "Workspace Storyboard",
-    "description": "Shows local Hyprland workspaces and a bounded recent workspace trail.",
+    "description": "Jump among live Hyprland workspaces and a private, clearable re-entry trail.",
     "category": "Info",
     "aliases": [
       "workspace-storyboard",

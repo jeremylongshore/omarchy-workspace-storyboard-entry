@@ -1,0 +1,7 @@
+# Policy and traceability surfaces not covered by audit-harness 1.3.1 defaults.
+.audit-harness.yml
+stryker.config.json
+tests/TESTING.md
+tests/RTM.md
+tests/PERSONAS.md
+tests/JOURNEYS.md

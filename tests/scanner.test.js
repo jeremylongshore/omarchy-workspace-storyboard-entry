@@ -37,6 +37,22 @@ const stopRacer = child => {
   if (child.exitCode !== null) return Promise.resolve()
   return new Promise(resolve => { child.once("close", resolve); child.kill() })
 }
+const waitFor = async (file, timeoutMs = 2000) => {
+  const deadline = Date.now() + timeoutMs
+  while (!fs.existsSync(file)) {
+    if (Date.now() >= deadline) assert.fail(`timed out waiting for ${file}`)
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+}
+const runHistoryAsync = (env, record) => new Promise((resolve, reject) => {
+  const child = spawn(historyHelper, [], { env, stdio: ["pipe", "pipe", "pipe"] })
+  let stdout = ""; let stderr = ""
+  child.stdout.on("data", chunk => { stdout += chunk })
+  child.stderr.on("data", chunk => { stderr += chunk })
+  child.on("error", reject)
+  child.on("close", status => resolve({ status, stdout, stderr }))
+  child.stdin.end(JSON.stringify(record))
+})
 
 test("state dir and history are created private (0700/0600)", () => {
   const x = hyprSetup(basePayloads); runScan(x.env)
@@ -87,12 +103,52 @@ test("history suppresses polling duplicates and returns newest re-entry first", 
   fs.rmSync(x.root, { recursive: true, force: true })
 })
 
+test("concurrent legitimate history writers preserve every distinct transition", async () => {
+  const x = hyprSetup(basePayloads)
+  try {
+    const records = Array.from({ length: 20 }, (_, i) => historyRecord(i + 1, `project-${i + 1}`, "terminal", 1700000100 + i))
+    const results = await Promise.all(records.map(record => runHistoryAsync(x.env, record)))
+    for (const result of results) assert.equal(result.status, 0, result.stderr)
+    const readback = runHistory(x.env, null)
+    assert.equal(readback.status, 0, readback.stderr)
+    const rows = JSON.parse(readback.stdout)
+    assert.equal(rows.length, records.length)
+    assert.deepEqual(new Set(rows.map(row => row.title)), new Set(records.map(row => row.title)))
+  } finally {
+    fs.rmSync(x.root, { recursive: true, force: true })
+  }
+})
+
+test("clear removes retained titles while preserving private state controls", () => {
+  const x = hyprSetup(basePayloads)
+  runHistory(x.env, historyRecord(1, "private title"))
+  const cleared = spawnSync(historyHelper, ["--clear"], { encoding: "utf8", env: x.env })
+  assert.equal(cleared.status, 0, cleared.stderr)
+  assert.deepEqual(JSON.parse(cleared.stdout), [])
+  assert.equal(fs.readFileSync(path.join(x.dir, "history.jsonl"), "utf8"), "")
+  assert.equal(fs.statSync(path.join(x.dir, ".history.lock")).mode & 0o777, 0o600)
+  fs.rmSync(x.root, { recursive: true, force: true })
+})
+
+test("failed publication removes its exclusive temporary file", () => {
+  const x = hyprSetup(basePayloads)
+  fs.mkdirSync(x.dir, { recursive: true })
+  fs.mkdirSync(path.join(x.dir, "history.jsonl"))
+  const result = runHistory(x.env, historyRecord(1))
+  assert.notEqual(result.status, 0)
+  assert.deepEqual(fs.readdirSync(x.dir).filter(name => name.startsWith(".history.") && name !== ".history.lock"), [])
+  fs.rmSync(x.root, { recursive: true, force: true })
+})
+
 test("same-UID final and temporary entry swaps never write through to a victim", async () => {
   const x = hyprSetup(basePayloads); runHistory(x.env, historyRecord(1))
   const victim = path.join(x.root, "victim-final-temp"); fs.writeFileSync(victim, "precious")
-  const racer = spawn(process.execPath, [path.join(__dirname, "fixtures", "history-swap-racer.js"), x.dir, victim], { stdio: "ignore" })
+  const ready = path.join(x.root, "swap-ready"); const attacked = path.join(x.root, "swap-attacked")
+  const racer = spawn(process.execPath, [path.join(__dirname, "fixtures", "history-swap-racer.js"), x.dir, victim, ready, attacked], { stdio: "ignore" })
   try {
+    await waitFor(ready)
     for (let i = 0; i < 60; i++) runHistory(x.env, historyRecord((i % 8) + 1, `title-${i}`))
+    await waitFor(attacked)
     assert.equal(fs.readFileSync(victim, "utf8"), "precious")
   } finally {
     await stopRacer(racer)
@@ -103,9 +159,12 @@ test("same-UID final and temporary entry swaps never write through to a victim",
 test("same-UID parent directory swaps cannot redirect history publication", async () => {
   const x = hyprSetup(basePayloads); runHistory(x.env, historyRecord(1))
   const victimDir = path.join(x.root, "victim-parent"); fs.mkdirSync(victimDir)
-  const racer = spawn(process.execPath, [path.join(__dirname, "fixtures", "history-parent-racer.js"), x.dir, victimDir], { stdio: "ignore" })
+  const ready = path.join(x.root, "parent-ready"); const attacked = path.join(x.root, "parent-attacked")
+  const racer = spawn(process.execPath, [path.join(__dirname, "fixtures", "history-parent-racer.js"), x.dir, victimDir, ready, attacked], { stdio: "ignore" })
   try {
+    await waitFor(ready)
     for (let i = 0; i < 60; i++) runHistory(x.env, historyRecord((i % 8) + 1, `title-${i}`))
+    await waitFor(attacked)
     assert.equal(fs.existsSync(path.join(victimDir, "history.jsonl")), false)
   } finally {
     await stopRacer(racer)
@@ -134,5 +193,23 @@ test("a symlinked state parent is refused rather than traversed", () => {
   const result = runHistory(x.env, historyRecord(1))
   assert.notEqual(result.status, 0)
   assert.equal(fs.existsSync(path.join(victimDir, "history.jsonl")), false)
+  fs.rmSync(x.root, { recursive: true, force: true })
+})
+
+test("a symlink in an intermediate state-root component is refused", () => {
+  const x = hyprSetup(basePayloads)
+  const outer = path.join(x.root, "outer"); const victim = path.join(x.root, "victim-intermediate")
+  fs.mkdirSync(outer); fs.mkdirSync(victim); fs.symlinkSync(victim, path.join(outer, "linked"), "dir")
+  const env = { ...x.env, XDG_STATE_HOME: path.join(outer, "linked", "state") }
+  const result = runHistory(env, historyRecord(1))
+  assert.notEqual(result.status, 0)
+  assert.equal(fs.existsSync(path.join(victim, "state", "omarchy-workspace-storyboard", "history.jsonl")), false)
+  fs.rmSync(x.root, { recursive: true, force: true })
+})
+
+test("a relative state root is rejected", () => {
+  const x = hyprSetup(basePayloads)
+  const result = runHistory({ ...x.env, XDG_STATE_HOME: "relative-state" }, historyRecord(1))
+  assert.notEqual(result.status, 0)
   fs.rmSync(x.root, { recursive: true, force: true })
 })

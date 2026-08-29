@@ -19,7 +19,23 @@ and gate c28 refuses them.
 
 Nothing yet.
 
-## [1.0.0] - unreleased
+## [0.2.0] - 2026-08-29
+
+### Added
+
+- Keyboard selection, direct workspace shortcuts, and accessible action names.
+- A visible control and command for clearing retained local workspace history.
+- Concurrent-writer, active-racer, publication-cleanup, accessibility, smoke,
+  mutation, audit, and Buzz acceptance coverage.
+
+### Changed
+
+- Serialized legitimate history writers with a private descriptor-checked lock.
+- Bound CI permissions and upgraded the test lane to current pinned actions.
+- Reframed Buzz evidence to distinguish real Omarchy rendering from fixture
+  Hyprland inputs in the headless container.
+
+## [0.1.0] - 2026-08-27
 
 ### Added
 

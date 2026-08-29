@@ -1,0 +1,4 @@
+# Omarchy plugin: QML frontend plus local Bash and stock-Perl helpers.
+classify_pins:
+  - frontend
+  - cli

@@ -28,7 +28,7 @@ TARGET="$(cd "${1:-$(dirname "$0")/..}" && pwd)"
 OUT="${2:-$TARGET/render.png}"
 HOST="${OMARCHY_RIG_HOST:-intent-ops-buzz}"
 CONTAINER="${OMARCHY_RIG_CONTAINER:-omarchy-rig}"
-RES="${OMARCHY_RIG_RESOLUTION:-1920x1200}"
+RES="${OMARCHY_RIG_RESOLUTION:-1280x900}"
 
 command -v jq >/dev/null 2>&1 || { echo "rig-render: jq is required" >&2; exit 2; }
 [[ -f "$TARGET/manifest.json" ]] || { echo "rig-render: no manifest.json in $TARGET" >&2; exit 2; }
@@ -36,6 +36,20 @@ command -v jq >/dev/null 2>&1 || { echo "rig-render: jq is required" >&2; exit 2
 MOD="$(jq -r '.id // empty' "$TARGET/manifest.json")"
 [[ -n "$MOD" ]] || { echo "rig-render: manifest.json has no id" >&2; exit 2; }
 NAME="${MOD##*.}"
+
+fingerprint() {
+  ( cd "$TARGET" && \
+    find . -type f \
+      -not -path './.git/*' -not -path './tests/*' \
+      -not -path './scripts/*' -not -path './node_modules/*' \
+      \( -name '*.qml' -o -name '*.js' -o -name 'manifest.json' -o -perm -u+x \) \
+      -print0 2>/dev/null \
+    | LC_ALL=C sort -z | xargs -0 cat 2>/dev/null | sha256sum | cut -d' ' -f1 )
+}
+FP="$(fingerprint)"
+SOURCE_COMMIT="$(git -C "$TARGET" rev-parse HEAD 2>/dev/null || printf unknown)"
+SOURCE_DIRTY=false
+git -C "$TARGET" diff --quiet --ignore-submodules HEAD -- 2>/dev/null || SOURCE_DIRTY=true
 
 TGZ="$(mktemp -t rigrender-XXXXXX.tgz)"
 trap 'rm -f "$TGZ"' EXIT
@@ -52,8 +66,11 @@ REMOTE="$(mktemp -t rigrender-XXXXXX.sh)"
 trap 'rm -f "$TGZ" "$REMOTE"' EXIT
 cat > "$REMOTE" <<REMOTE_EOF
 #!/bin/sh
+set -eu
 MOD="$MOD"; NAME="$NAME"; RES="$RES"
 export XDG_RUNTIME_DIR=/tmp/xdgrt
+export OMARCHY_PATH=/root/omarchy
+export PATH=/root/omarchy/bin:\$PATH
 mkdir -p \$XDG_RUNTIME_DIR; chmod 700 \$XDG_RUNTIME_DIR
 
 # Start a headless compositor only if one is not already serving.
@@ -65,7 +82,7 @@ export WAYLAND_DISPLAY=wayland-1
 export SWAYSOCK=\$(ls \$XDG_RUNTIME_DIR/sway-ipc.*.sock 2>/dev/null | head -1)
 swaymsg output HEADLESS-1 resolution "\$RES" >/dev/null 2>&1
 
-pkill -f 'qs -p' 2>/dev/null; sleep 1
+pkill -f 'qs -p' 2>/dev/null || true; sleep 1
 # Purge EVERY directory that declares this module id, not just the one matching
 # our folder name. The rig accumulates installs from earlier runs and from the
 # omarchy CLI, which names its folder after the full id; a stale copy of the
@@ -87,8 +104,10 @@ tar xzf /tmp/rigrender.tgz -C /root/.config/omarchy/plugins/\$NAME
 # empty state under the headless sway compositor.
 FIXTURE_BIN=/tmp/workspace-storyboard-bin
 mkdir -p "\$FIXTURE_BIN"
+rm -f /tmp/workspace-storyboard-hyprctl.log
 cat > "\$FIXTURE_BIN/hyprctl" <<'HYPR_FIXTURE'
 #!/bin/sh
+printf '%s\n' "\$*" >> /tmp/workspace-storyboard-hyprctl.log
 if [ "\$1" = "-j" ]; then
   case "\$2" in
     workspaces) printf '%s' '[{"id":1,"windows":3,"lastwindowtitle":"API test run"},{"id":3,"windows":5,"lastwindowtitle":"Workspace Storyboard hardening"},{"id":7,"windows":2,"lastwindowtitle":"Release notes"}]' ;;
@@ -123,10 +142,16 @@ sleep 18
 echo "===QML WARNINGS==="
 # libEGL/MESA/ZINK noise is the headless software renderer, not the plugin.
 grep -a -iE "cannot assign|is not a type|unable to|no such|ERROR" /tmp/qs-render.log \
-  | grep -av libEGL | grep -av MESA | grep -av ZINK | head -10
+  | grep -av libEGL | grep -av MESA | grep -av ZINK \
+  | grep -av 'pw.loop' | grep -av 'quickshell.service.pipewire.loop' \
+  | grep -av 'org.freedesktop.UPower' | head -10
 
 qs -p /root/omarchy/shell ipc call "\$MOD" toggle 2>/dev/null
 sleep 6
+qs -p /root/omarchy/shell ipc call "\$MOD" jump 7 2>/dev/null
+sleep 2
+grep -Fx 'dispatch workspace 7' /tmp/workspace-storyboard-hyprctl.log >/dev/null
+echo "===DISPATCH=== dispatch workspace 7"
 grim /tmp/rigrender.png 2>/dev/null
 echo "===SHOT=== \$(ls -l /tmp/rigrender.png 2>/dev/null | awk '{print \$5}') bytes"
 REMOTE_EOF
@@ -138,6 +163,7 @@ RESULT="$(ssh "$HOST" "docker cp /tmp/rigrender.tgz $CONTAINER:/tmp/ >/dev/null 
 
 WARNINGS="$(printf '%s' "$RESULT" | sed -n '/===QML WARNINGS===/,/===SHOT===/p' | grep -vE '===' || true)"
 SIZE="$(printf '%s' "$RESULT" | grep -oE '===SHOT=== [0-9]+' | grep -oE '[0-9]+' || true)"
+DISPATCH="$(printf '%s' "$RESULT" | grep -oE '===DISPATCH=== dispatch workspace [0-9]+' | sed 's/^===DISPATCH=== //' || true)"
 
 if [[ -n "$WARNINGS" ]]; then
   echo "rig-render: the shell reported problems loading this plugin:"
@@ -149,11 +175,26 @@ if [[ -z "$SIZE" || "$SIZE" -lt 4000 ]]; then
   echo "rig-render: check /tmp/qs-render.log inside the container" >&2
   exit 1
 fi
+if [[ "$DISPATCH" != "dispatch workspace 7" ]]; then
+  echo "rig-render: fixed-argv workspace dispatch was not observed" >&2
+  exit 1
+fi
 
 ssh "$HOST" "docker cp $CONTAINER:/tmp/rigrender.png /tmp/rigrender-out.png >/dev/null" || exit 1
 scp -q "$HOST:/tmp/rigrender-out.png" "$OUT" || exit 1
 
+PREVIEW_SHA="$(sha256sum "$OUT" | cut -d' ' -f1)"
+DIMENSIONS="$(file "$OUT" | sed -nE 's/.*PNG image data, ([0-9]+ x [0-9]+),.*/\1/p')"
+jq -n --arg fp "$FP" --arg commit "$SOURCE_COMMIT" --argjson dirty "$SOURCE_DIRTY" \
+  --arg rig "$HOST/$CONTAINER" --arg sha "$PREVIEW_SHA" --arg dimensions "$DIMENSIONS" \
+  --arg dispatch "$DISPATCH" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '{fingerprint:$fp,sourceCommit:$commit,sourceDirty:$dirty,rig:$rig,
+    evidenceBoundary:"real Omarchy shell and QML; deterministic local Hyprland fixture data",
+    previewSha256:$sha,dimensions:$dimensions,ipcDispatch:$dispatch,capturedAt:$at}' \
+  > "$TARGET/.render-proof.json"
+
 echo "rig-render: wrote $OUT (${SIZE} bytes on the rig)"
+echo "rig-render: observed $DISPATCH through plugin IPC"
 [[ -n "$WARNINGS" ]] && exit 1
 echo "rig-render: loaded clean, no QML warnings"
 exit 0
