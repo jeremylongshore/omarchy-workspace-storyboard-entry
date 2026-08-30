@@ -5,7 +5,7 @@
   "version": "0.2.0",
   "author": "Jeremy Longshore",
   "license": "MIT",
-  "description": "Private workspace re-entry memory with keyboard navigation and one-click clearing.",
+  "description": "Workspace Storyboard turns your Omarchy bar into a local map of live Hyprland workspaces. See workspace window counts and the active window title, then click or use Up/Down, Enter, or 1-9 to jump back into context. It retains a clearable, capped re-entry trail of workspace IDs, titles, application classes, and timestamps in private local state. It makes no network requests, and its Hyprland reads and panel payload are time and byte bounded. It stores 40 events and shows the newest eight locally.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "Workspace Storyboard",
-    "description": "Jump among live Hyprland workspaces and a private, clearable re-entry trail.",
+    "description": "Workspace Storyboard turns your Omarchy bar into a local map of live Hyprland workspaces. See workspace window counts and the active window title, then click or use Up/Down, Enter, or 1-9 to jump back into context. It retains a clearable, capped re-entry trail of workspace IDs, titles, application classes, and timestamps in private local state. It makes no network requests, and its Hyprland reads and panel payload are time and byte bounded. It stores 40 events and shows the newest eight locally.",
     "category": "Info",
     "aliases": [
       "workspace-storyboard",
