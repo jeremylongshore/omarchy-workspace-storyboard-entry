@@ -25,4 +25,4 @@ jobs:
       - name: ShellCheck developer, rig, and runtime scripts
         run: |
           shellcheck --version
-          shellcheck --severity=warning bin/workspace-storyboard-scan scripts/*.sh e2e/*.sh .githooks/pre-push
+          shellcheck --severity=warning bin/workspace-storyboard-scan scripts/*.sh e2e/*.sh e2e/bin/* .githooks/pre-push

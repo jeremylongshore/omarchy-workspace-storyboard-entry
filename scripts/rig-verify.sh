@@ -38,7 +38,10 @@ fingerprint() {
 FP="$(fingerprint)"
 SOURCE_COMMIT="$(git -C "$TARGET" rev-parse HEAD 2>/dev/null || printf unknown)"
 SOURCE_DIRTY=false
-git -C "$TARGET" diff --quiet --ignore-submodules HEAD -- '*.qml' '*.js' manifest.json bin/ 2>/dev/null || SOURCE_DIRTY=true
+if [[ "$SOURCE_COMMIT" == "unknown" ]] || \
+   [[ -n "$(git -C "$TARGET" status --porcelain --untracked-files=all -- '*.qml' '*.js' manifest.json bin 2>/dev/null)" ]]; then
+  SOURCE_DIRTY=true
+fi
 
 TGZ="$(mktemp -t rigcheck-XXXXXX.tgz)"
 trap 'rm -f "$TGZ"' EXIT
@@ -97,7 +100,7 @@ jq -n --arg fp "$FP" --arg commit "$SOURCE_COMMIT" --argjson dirty "$SOURCE_DIRT
       --argjson at "$(date +%s)" --arg iso "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   '{fingerprint:$fp, sourceCommit:$commit, sourceDirty:$dirty,
     sourcePackageSha256:$archive, remotePackageSha256:$remote, rig:$rig,
-    evidenceBoundary:"real Omarchy validator and qmllint; no live Hyprland compositor",
+    evidenceBoundary:"real Omarchy validator and qmllint; no live compositor render",
     omarchyPluginValidate:$v, qmllintErrors:$q,
     validatedAtEpoch:$at, validatedAt:$iso}' > "$TARGET/.rig-proof.json"
 

@@ -10,5 +10,5 @@
 | REQ-WS-005 | MUST | README.md | Keep retained data private, capped, documented, and explicitly clearable | L3, L5 | tests/scanner.test.js, tests/a11y.test.js | Covered |
 | REQ-WS-006 | MUST | Panel.qml | Parse scanner output fail-closed and dispatch only revalidated numeric workspace IDs | L3, L5 | tests/model.test.js, tests/smoke.test.js | Covered |
 | REQ-WS-007 | MUST | Panel.qml | Expose named button roles and keyboard selection, activation, and clearing | L5, L6 | tests/a11y.test.js | Covered |
-| REQ-WS-008 | MUST | submission process | Validate, load, open, exercise fixture dispatch, and render in the Buzz Omarchy shell | L6, L7 | e2e/buzz.sh | Covered |
-| REQ-WS-009 | SHOULD | marketplace presentation | Show a readable selected workspace, recent trail, clear control, and keyboard legend | L3, L6 | tests/model.test.js, e2e/buzz.sh | Covered |
+| REQ-WS-008 | MUST | submission process | Validate, load, open, exercise fixture dispatch, and render in the Buzz Omarchy shell | L6, L7 | e2e/buzz.sh | Pending live proof |
+| REQ-WS-009 | SHOULD | marketplace presentation | Show a readable selected workspace, recent trail, clear control, and keyboard legend | L3, L6 | tests/model.test.js, tests/contract.test.js, e2e/buzz.sh | Pending hash-bound inspection |

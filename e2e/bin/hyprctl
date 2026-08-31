@@ -1,0 +1,66 @@
+#!/bin/sh
+# Deterministic Hyprland contract fixture for the isolated marketplace rig.
+# scripts/rig-render.sh prepends this command only inside its throwaway HOME.
+set -eu
+
+runtime="${XDG_RUNTIME_DIR:?}"
+active_file="$runtime/storyboard-active-workspace"
+log_file="$runtime/storyboard-hyprctl.log"
+
+active_id() {
+  if test -s "$active_file"; then
+    cat "$active_file"
+  else
+    printf '4'
+  fi
+}
+
+title_for() {
+  case "$1" in
+    1) printf 'Launch Plan - Q3' ;;
+    2) printf 'Code Review - auth-service' ;;
+    4) printf 'Deployment Runbook - Production' ;;
+    7) printf 'Observability - API Latency' ;;
+    *) printf 'Workspace' ;;
+  esac
+}
+
+case "${1:-}:${2:-}" in
+  -j:workspaces)
+    printf '%s\n' '[
+      {"id":1,"windows":3,"lastwindowtitle":"Launch Plan - Q3"},
+      {"id":2,"windows":5,"lastwindowtitle":"Code Review - auth-service"},
+      {"id":4,"windows":2,"lastwindowtitle":"Deployment Runbook - Production"},
+      {"id":7,"windows":4,"lastwindowtitle":"Observability - API Latency"}
+    ]'
+    ;;
+  -j:activeworkspace)
+    current="$(active_id)"
+    printf '{"id":%s}\n' "$current"
+    ;;
+  -j:activewindow)
+    current="$(active_id)"
+    title="$(title_for "$current")"
+    case "$current" in
+      1) app='obsidian' ;;
+      2) app='code' ;;
+      4) app='zen-browser' ;;
+      7) app='kitty' ;;
+      *) app='unknown' ;;
+    esac
+    printf '{"title":"%s","class":"%s"}\n' "$title" "$app"
+    ;;
+  dispatch:workspace)
+    target="${3:-}"
+    case "$target" in
+      1|2|4|7) ;;
+      *) printf 'storyboard fixture: refused workspace %s\n' "$target" >&2; exit 2 ;;
+    esac
+    printf '%s\n' "$target" > "$active_file"
+    printf 'dispatch:%s\n' "$target" >> "$log_file"
+    ;;
+  *)
+    printf 'storyboard fixture: refused argv: %s %s %s\n' "${1:-}" "${2:-}" "${3:-}" >&2
+    exit 2
+    ;;
+esac

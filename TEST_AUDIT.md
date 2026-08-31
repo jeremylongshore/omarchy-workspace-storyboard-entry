@@ -1,6 +1,6 @@
 # Workspace Storyboard Test Audit
 
-Date: 2026-08-29
+Date: 2026-08-30
 Scope: maintainer-grade individual marketplace re-audit
 
 ## Outcome
@@ -20,8 +20,8 @@ adds those behaviors and tests them at the layer where each failure can occur.
 - Accessibility: named button roles and keyboard activation contract
 - Mutation: Stryker over all Model.js behavior with a 90 percent blocking floor
 - Stability: full scanner and race suite repeated three times
-- Acceptance: validator, qmllint, real Omarchy shell load, IPC panel open,
-  deterministic fixture scan and dispatch, and a Buzz-captured preview
+- Acceptance lane: validator, qmllint, real Omarchy shell load, IPC panel open,
+  deterministic fixture scan and dispatch, and a Buzz-captured preview; current-revision proof is pending
 
 ## Evidence boundary
 
@@ -30,6 +30,11 @@ headless compositor is Sway, so the Hyprland JSON and dispatch command are local
 fixtures with logged fixed argv. This is not represented as a live Hyprland
 compositor test. Stock-shape Hyprland JSON is covered independently by the smoke
 and scanner suites.
+
+The prior 960x600 render receipt and rig receipt were removed after the manifest
+and enforcement changed. They cannot certify this source tree and do not meet
+the 1280x720, exact-package, raw-log, coverage, or hash-bound inspection
+contract. Buzz is currently unreachable, so live acceptance remains pending.
 
 ## Remaining advisories
 
