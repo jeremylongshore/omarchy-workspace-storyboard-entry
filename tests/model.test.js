@@ -63,3 +63,28 @@ test("selection survives refresh and wraps through available workspaces", () => 
   assert.equal(M.stepSelection([], 1, 1), 0)
   assert.equal(M.stepSelection(null, 1, 1), 0)
 })
+
+test("a workspace jump tries the Lua dispatch first, then the classic form", () => {
+  assert.deepEqual(M.jumpAttempts(2), [
+    ["hyprctl", "dispatch", 'hl.dsp.focus({ workspace = "2" })'],
+    ["hyprctl", "dispatch", "workspace", "2"]
+  ])
+  assert.deepEqual(M.jumpAttempts(999)[0], ["hyprctl", "dispatch", 'hl.dsp.focus({ workspace = "999" })'])
+  assert.deepEqual(M.jumpAttempts(999)[1], ["hyprctl", "dispatch", "workspace", "999"])
+  for (const bad of [0, -1, 1000, 1.5, "2", null, undefined, NaN]) assert.deepEqual(M.jumpAttempts(bad), [], String(bad))
+})
+
+test("a dispatch counts only on an exact ok reply with exit 0", () => {
+  assert.equal(M.dispatchSucceeded("ok", 0), true)
+  assert.equal(M.dispatchSucceeded("ok\n", 0), true)
+  assert.equal(M.dispatchSucceeded("  ok  ", 0), true)
+  assert.equal(M.dispatchSucceeded("ok", 1), false)
+  assert.equal(M.dispatchSucceeded("ok", undefined), false)
+  assert.equal(M.dispatchSucceeded("ok", null), false)
+  assert.equal(M.dispatchSucceeded("", 0), false)
+  assert.equal(M.dispatchSucceeded(undefined, 0), false)
+  assert.equal(M.dispatchSucceeded(null, 0), false)
+  assert.equal(M.dispatchSucceeded("okay", 0), false)
+  assert.equal(M.dispatchSucceeded("ok\nok", 0), false)
+  assert.equal(M.dispatchSucceeded("[string \"hl\"]:1: syntax error near 'workspace'", 0), false)
+})

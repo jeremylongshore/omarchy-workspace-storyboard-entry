@@ -66,5 +66,27 @@ function stepSelection(workspaces, selectedId, delta) {
   return workspaces[index].id
 }
 
+// A workspace jump, as the argv lists hyprctl is tried with, in order. Hyprland
+// 0.57 configures in Lua, and its `hyprctl dispatch` evaluates the argument as
+// Lua, so the classic `dispatch workspace N` is a syntax error there. The Lua
+// form goes first, as Omarchy's own omarchy-hyprland-window-minimize sends it;
+// the classic form follows for a Hyprland that predates Lua dispatch. The id is
+// a validated integer, so it needs no escaping inside the Lua string.
+function jumpAttempts(id) {
+  if (!validId(id)) return []
+  var ws = String(id)
+  return [
+    ["hyprctl", "dispatch", "hl.dsp.focus({ workspace = \"" + ws + "\" })"],
+    ["hyprctl", "dispatch", "workspace", ws]
+  ]
+}
+
+// `hyprctl dispatch` prints exactly "ok" when it acted. A form the running
+// Hyprland does not understand prints an error instead, so the next attempt runs.
+function dispatchSucceeded(output, exitCode) {
+  if (exitCode !== 0) return false
+  return String(output).trim() === "ok"
+}
+
 // Stryker disable next-line all: CommonJS export guard is unreachable in QML and required for node:test.
-if (typeof module !== "undefined") module.exports = { MAX_WORKSPACES, MAX_HISTORY, clean, validId, ageLabel, parseStoryboard, pillText, tooltipText, keepSelection, stepSelection }
+if (typeof module !== "undefined") module.exports = { MAX_WORKSPACES, MAX_HISTORY, clean, validId, ageLabel, parseStoryboard, pillText, tooltipText, keepSelection, stepSelection, jumpAttempts, dispatchSucceeded }
