@@ -25,6 +25,17 @@ title_for() {
   esac
 }
 
+# Both dispatch forms land here. Like hyprctl, a dispatch that acted prints "ok".
+switch_to() {
+  case "$1" in
+    1|2|4|7) ;;
+    *) printf 'storyboard fixture: refused workspace %s\n' "$1" >&2; exit 2 ;;
+  esac
+  printf '%s\n' "$1" > "$active_file"
+  printf 'dispatch:%s\n' "$1" >> "$log_file"
+  printf 'ok\n'
+}
+
 case "${1:-}:${2:-}" in
   -j:workspaces)
     printf '%s\n' '[
@@ -51,13 +62,14 @@ case "${1:-}:${2:-}" in
     printf '{"title":"%s","class":"%s"}\n' "$title" "$app"
     ;;
   dispatch:workspace)
-    target="${3:-}"
-    case "$target" in
-      1|2|4|7) ;;
-      *) printf 'storyboard fixture: refused workspace %s\n' "$target" >&2; exit 2 ;;
-    esac
-    printf '%s\n' "$target" > "$active_file"
-    printf 'dispatch:%s\n' "$target" >> "$log_file"
+    switch_to "${3:-}"
+    ;;
+  dispatch:hl.dsp.focus*)
+    # Hyprland 0.57's Lua dispatch, exactly as the panel sends it.
+    [ "$#" -eq 2 ] || { printf 'storyboard fixture: refused Lua argv\n' >&2; exit 2; }
+    target="$(printf '%s' "$2" | sed -n 's/^hl\.dsp\.focus({ workspace = "\([0-9][0-9]*\)" })$/\1/p')"
+    [ -n "$target" ] || { printf 'storyboard fixture: refused Lua dispatch %s\n' "$2" >&2; exit 2; }
+    switch_to "$target"
     ;;
   *)
     printf 'storyboard fixture: refused argv: %s %s %s\n' "${1:-}" "${2:-}" "${3:-}" >&2

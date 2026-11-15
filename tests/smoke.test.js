@@ -48,7 +48,16 @@ esac
 test("runtime actions remain fixed argv and expose failures", () => {
   const qml = fs.readFileSync(path.join(root, "Panel.qml"), "utf8")
   assert.doesNotMatch(qml, /bash|sh -c|execDetached/)
-  assert.match(qml, /\["hyprctl", "dispatch", "workspace", String\(id\)\]/)
+  // Hyprland 0.57 evaluates `hyprctl dispatch` as Lua: the panel takes its argv
+  // lists from Model.jumpAttempts (Lua first, classic second) and moves on only
+  // when a reply is not exactly "ok" with exit 0.
+  assert.doesNotMatch(qml, /"hyprctl", "dispatch", "workspace"/)
+  assert.match(qml, /var attempts = Model\.jumpAttempts\(id\)/)
+  assert.match(qml, /jumpProc\.command = attempts\[0\]/)
+  assert.match(qml, /root\.jumpQueue = attempts\.slice\(1\)/)
+  assert.match(qml, /onStreamFinished: jumpProc\.reply = text/)
+  assert.match(qml, /var ok = Model\.dispatchSucceeded\(jumpProc\.reply, code\)/)
+  assert.match(qml, /if \(!ok && root\.jumpQueue\.length > 0\) \{ jumpProc\.command = root\.jumpQueue\[0\]/)
   assert.match(qml, /function jump\(id: int\): void \{ root\.go\(id\) \}/)
   assert.match(qml, /\[root\.historyPath, "--clear"\]/)
   assert.match(qml, /WORKSPACE SWITCH FAILED/)

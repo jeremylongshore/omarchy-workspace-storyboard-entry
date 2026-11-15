@@ -1,6 +1,6 @@
 {
   "name": "omarchy-workspace-storyboard-entry",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Local Hyprland workspace storyboard test harness",
   "scripts": {

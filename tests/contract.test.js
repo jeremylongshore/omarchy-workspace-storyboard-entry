@@ -44,19 +44,39 @@ test("render fixture proves curated workspace topology and a fixed-argv dispatch
     const workspaces = JSON.parse(run(["-j", "workspaces"]))
     assert.deepEqual(workspaces.map(row => row.id), [1, 2, 4, 7])
     assert.equal(JSON.parse(run(["-j", "activeworkspace"])).id, 4)
-    run(["dispatch", "workspace", "2"])
+    // The panel's two attempts, exactly as Model.jumpAttempts builds them.
+    const [lua, classic] = require("../Model.js").jumpAttempts(2)
+    assert.deepEqual(lua, ["hyprctl", "dispatch", 'hl.dsp.focus({ workspace = "2" })'])
+    assert.equal(run(lua.slice(1)).trim(), "ok")
     assert.equal(JSON.parse(run(["-j", "activeworkspace"])).id, 2)
     assert.match(JSON.parse(run(["-j", "activewindow"])).title, /Code Review/)
+    assert.equal(run(["dispatch", "workspace", "7"]).trim(), "ok")
+    assert.equal(JSON.parse(run(["-j", "activeworkspace"])).id, 7)
+    assert.deepEqual(classic, ["hyprctl", "dispatch", "workspace", "2"])
     assert.throws(() => run(["dispatch", "workspace", "99"]), /Command failed/)
+    assert.throws(() => run(["dispatch", 'hl.dsp.focus({ workspace = "99" })']), /Command failed/)
+    assert.throws(() => run(["dispatch", 'hl.dsp.focus({ workspace = "2" }) os.exit()']), /Command failed/)
   } finally {
     fs.rmSync(runtime, { recursive: true, force: true })
   }
   assert.match(read("e2e/rig-before-shell.sh"), /for workspace in 1 7 4/)
-  assert.match(read("e2e/rig-before-capture.sh"), /hyprctl dispatch workspace 2/)
+  assert.match(read("e2e/rig-before-capture.sh"), /hyprctl dispatch 'hl\.dsp\.focus\(\{ workspace = "2" \}\)'/)
 })
 
 test("marketplace contract binds topology, action proof, and image approval", () => {
   const contract = read("contracts/marketplace.md")
   for (const claim of ["500 characters", "1280x720", "four deterministic", "fixed-argv dispatch", "SHA-256"])
     assert.match(contract, new RegExp(claim))
+})
+
+test("QML qualifies Omarchy's palette as Commons.Color, never bare Color", () => {
+  // Qt 6.12 introduces its own Color type; omarchy docs/omarchy-shell.md
+  // (Theme tokens) requires plugins to import qs.Commons with an alias.
+  const files = fs.readdirSync(root).filter(name => name.endsWith(".qml"))
+  assert.ok(files.length > 0)
+  for (const file of files) {
+    const source = fs.readFileSync(path.join(root, file), "utf8")
+    assert.doesNotMatch(source, /(^|[^\w.])Color\./m, file + " uses bare Color")
+    if (/Commons\.Color\./.test(source)) assert.match(source, /^import qs\.Commons as Commons$/m, file)
+  }
 })

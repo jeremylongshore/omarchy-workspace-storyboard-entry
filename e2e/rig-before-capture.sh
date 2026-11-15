@@ -3,7 +3,9 @@
 set -eu
 
 scanner="${PLUGIN_DIR:?}/bin/workspace-storyboard-scan"
-hyprctl dispatch workspace 2
+# The panel's first attempt on current Hyprland: the Lua dispatch form.
+reply="$(hyprctl dispatch 'hl.dsp.focus({ workspace = "2" })')"
+test "$reply" = ok
 switched="$($scanner)"
 
 printf '%s\n' "$switched" | jq -e '

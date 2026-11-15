@@ -6,7 +6,7 @@ scanner="${PLUGIN_DIR:?}/bin/workspace-storyboard-scan"
 test -x "$scanner"
 
 for workspace in 1 7 4; do
-  hyprctl dispatch workspace "$workspace"
+  hyprctl dispatch workspace "$workspace" >/dev/null
   "$scanner" >/dev/null
 done
 
